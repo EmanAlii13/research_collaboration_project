@@ -1,5 +1,5 @@
 # main_demo.py
-# نظام إدارة التعاون البحثي مع البحث المتقدم
+# Research Collaboration Management System
 # MongoDB + Neo4j + Redis
 
 from pymongo import MongoClient
@@ -7,11 +7,14 @@ from neo4j import GraphDatabase
 import redis
 from dotenv import load_dotenv
 import os
+import json
+from bson import ObjectId
+import time  # لقياس الوقت
 
 load_dotenv()
 
 # -----------------------------
-# إعدادات قواعد البيانات
+# Database configurations
 # -----------------------------
 MONGO_URI = os.getenv("MONGO_URI")
 mongo_client = MongoClient(MONGO_URI)
@@ -31,15 +34,47 @@ REDIS_PASS = os.getenv("REDIS_PASSWORD")
 r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, password=REDIS_PASS, decode_responses=True)
 
 # -----------------------------
-# دوال MongoDB
+# Redis caching function with timing
+# -----------------------------
+def cache_researcher(name):
+    start_time = time.perf_counter()  # Start timing
+
+    # Check in Redis first
+    data = r.get(f"researcher:{name}")
+    if data:
+        elapsed = time.perf_counter() - start_time
+        print(f"✅ Data fetched from Redis (Cache) in {elapsed:.6f} seconds")
+        return json.loads(data)
+
+    # Fetch from MongoDB
+    researcher = researchers_col.find_one({"name": name})
+    if not researcher:
+        elapsed = time.perf_counter() - start_time
+        print(f"No researcher found (MongoDB checked in {elapsed:.6f} seconds)")
+        return None
+
+    # Convert ObjectId to string for JSON
+    if "_id" in researcher:
+        researcher["_id"] = str(researcher["_id"])
+
+    # Store in Redis for 60 seconds
+    r.set(f"researcher:{name}", json.dumps(researcher), ex=60)
+    elapsed = time.perf_counter() - start_time
+    print(f"✅ Data fetched from MongoDB and stored in Redis in {elapsed:.6f} seconds")
+    return researcher
+
+# -----------------------------
+# MongoDB functions
 # -----------------------------
 def show_researcher_by_name(name):
-    r = researchers_col.find_one({"name": name})
-    if not r:
+    r_data = cache_researcher(name)
+    if not r_data:
         print(f"No researcher found with name '{name}'")
         return
-    print(f"\nName: {r.get('name','')}, Department: {r.get('department','')}, Interests: {', '.join(r.get('interests',[]))}")
-    # مشاريع الباحث
+
+    print(f"\nName: {r_data.get('name','')}, Department: {r_data.get('department','')}, Interests: {', '.join(r_data.get('interests',[]))}")
+    
+    # Projects of the researcher
     projects = projects_col.find({"participants": name})
     print("Projects:")
     for p in projects:
@@ -55,7 +90,7 @@ def show_project_by_title(title):
     print("Participants:")
     for r_name in participants:
         print(f" - {r_name}")
-    # عرض العلاقات بينهم من Neo4j
+    # Show relationships in Neo4j
     with neo_driver.session() as session:
         for i, r1 in enumerate(participants):
             for r2 in participants[i+1:]:
@@ -68,7 +103,7 @@ def show_project_by_title(title):
                     print(f"   {r1} -[{rec['relation']}]-> {r2}")
 
 # -----------------------------
-# باقي الدوال من النسخة السابقة
+# Other functions
 # -----------------------------
 def add_researcher(name, department, interests):
     researchers_col.insert_one({"name": name,"department": department,"interests": interests})
@@ -89,7 +124,7 @@ def add_project(title, description, participants):
     print(f"Project '{title}' added successfully!")
 
 # -----------------------------
-# القائمة التفاعلية
+# Interactive menu
 # -----------------------------
 def main_menu():
     while True:
@@ -125,7 +160,6 @@ def main_menu():
             participants = input("Participants (comma separated names): ").split(",")
             add_project(title.strip(), desc.strip(), [p.strip() for p in participants])
         elif choice=="6":
-            # التحليلات Neo4j
             with neo_driver.session() as session:
                 query = """
                 MATCH (r:Researcher)-[:WORKS_ON]->(p:Project)

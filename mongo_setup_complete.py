@@ -1,27 +1,43 @@
+# mongo_setup_complete_final.py
+# إعداد MongoDB لكل الحسابين (Account 1 + Account 2)
+# كل الباحثين، المشاريع، والمنشورات موجودين بالكامل
+
 from pymongo import MongoClient
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 # =========================
-# الاتصال بMongoDB Atlas
+# MongoDB Account 1
 # =========================
-connection_string = "mongodb+srv://eman_user:moon123Ali@research-cluster.jnmku4p.mongodb.net/?retryWrites=true&w=majority"
-client = MongoClient(connection_string)
-db = client["research_db"]
-
-# اختيار الـ Collections
-researchers_collection = db["researchers"]
-projects_collection = db["projects"]
-publications_collection = db["publications"]
+MONGO_URI_1 = os.getenv("MONGO_URI_1")
+client1 = MongoClient(MONGO_URI_1)
+db1 = client1["research_db"]
+researchers_col1 = db1["researchers"]
+projects_col1 = db1["projects"]
+publications_col1 = db1["publications"]
 
 # =========================
-# مسح البيانات القديمة
+# MongoDB Account 2
 # =========================
-researchers_collection.delete_many({})
-projects_collection.delete_many({})
-publications_collection.delete_many({})
-print("تم مسح جميع البيانات القديمة!")
+MONGO_URI_2 = os.getenv("MONGO_URI_2")
+client2 = MongoClient(MONGO_URI_2)
+db2 = client2["research_db"]
+researchers_col2 = db2["researchers"]
+projects_col2 = db2["projects"]
+publications_col2 = db2["publications"]
 
 # =========================
-# بيانات 50 باحث واقعي
+# مسح البيانات القديمة في الحسابين
+# =========================
+for col in [researchers_col1, projects_col1, publications_col1,
+            researchers_col2, projects_col2, publications_col2]:
+    col.delete_many({})
+print("✅ تم مسح جميع البيانات القديمة في الحسابين!")
+
+# =========================
+# بيانات الباحثين (50 باحث)
 # =========================
 researchers = [
     {"name": "Eman Ali", "department": "Computer Science", "interests": ["AI", "Data Science"]},
@@ -77,13 +93,7 @@ researchers = [
 ]
 
 # =========================
-# إضافة الباحثين
-# =========================
-inserted_researchers = researchers_collection.insert_many(researchers)
-print(f"تم إضافة {len(inserted_researchers.inserted_ids)} باحثين بنجاح!")
-
-# =========================
-# بيانات 20 مشروع
+# بيانات المشاريع (20 مشروع)
 # =========================
 projects = [
     {"title": "AI in Healthcare", "participants": ["Eman Ali", "Tariq Hassan", "Khaled Mahmoud"], "publications": ["AI & Medicine 2026", "Healthcare AI Review"]},
@@ -109,22 +119,31 @@ projects = [
 ]
 
 # =========================
-# إضافة المشاريع
+# إضافة الباحثين لكل الحسابين
 # =========================
-inserted_projects = projects_collection.insert_many(projects)
-print(f"تم إضافة {len(inserted_projects.inserted_ids)} مشاريع بنجاح!")
+for col in [researchers_col1, researchers_col2]:
+    col.insert_many(researchers)
+print(f"✅ تم إضافة {len(researchers)} باحثين لكل الحساب!")
 
 # =========================
-# إضافة المنشورات
+# إضافة المشاريع لكل الحسابين
 # =========================
-publications = []
+for col in [projects_col1, projects_col2]:
+    col.insert_many(projects)
+print(f"✅ تم إضافة {len(projects)} مشاريع لكل الحساب!")
+
+# =========================
+# إضافة المنشورات لكل الحسابين
+# =========================
+publications_list = []
 for project in projects:
     for pub_title in project["publications"]:
-        publications.append({
+        publications_list.append({
             "title": pub_title,
             "project": project["title"],
             "authors": project["participants"]
         })
 
-inserted_publications = publications_collection.insert_many(publications)
-print(f"تم إضافة {len(inserted_publications.inserted_ids)} منشورات بنجاح!")
+for col in [publications_col1, publications_col2]:
+    col.insert_many(publications_list)
+print(f"✅ تم إضافة {len(publications_list)} منشورات لكل الحساب!")
